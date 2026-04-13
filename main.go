@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/caigangkun/github-user-dl/i18n"
 )
 
 // GitHub仓库结构体（仅保留核心字段）
@@ -31,11 +33,14 @@ var (
 )
 
 func init() {
+	// 初始化国际化
+	i18n.Init()
+
 	// 解析命令行参数
-	flag.StringVar(&username, "u", "", "GitHub用户名（必填）")
-	flag.StringVar(&targetPath, "p", "", "目标路径（缺省为./{用户名}）")
+	flag.StringVar(&username, "u", "", i18n.T.Tr("flag_username"))
+	flag.StringVar(&targetPath, "p", "", i18n.T.Tr("flag_path"))
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "使用说明: github-user-dl -u <用户名> [-p <目标路径>]\n")
+		fmt.Fprintf(os.Stderr, "%s\n", i18n.T.Tr("usage"))
 		flag.PrintDefaults()
 	}
 }
@@ -51,18 +56,18 @@ func loadManifest(targetDir string) (map[string]bool, error) {
 	manifestPath := filepath.Join(targetDir, manifestFile)
 	data, err := ioutil.ReadFile(manifestPath)
 	if os.IsNotExist(err) {
-		logger.Printf("未找到状态文件 %s，从头开始扫描所有仓库。", manifestFile)
+		logger.Printf(i18n.T.Tr("no_manifest"), manifestFile)
 		return make(map[string]bool), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("读取状态文件失败: %w", err)
+		return nil, fmt.Errorf(i18n.T.Tr("read_manifest_error"), err)
 	}
 
 	var manifest map[string]bool
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("解析状态文件失败，可能文件已损坏: %w", err)
+		return nil, fmt.Errorf(i18n.T.Tr("parse_manifest_error"), err)
 	}
-	logger.Printf("成功加载状态文件，已记录 %d 个已处理的仓库。", len(manifest))
+	logger.Printf(i18n.T.Tr("load_manifest_success"), len(manifest))
 	return manifest, nil
 }
 
@@ -73,7 +78,7 @@ func saveManifest(targetDir string, processedRepos []GitHubRepo) error {
 	// 1. 读取现有状态
 	existingManifest, err := loadManifest(targetDir)
 	if err != nil {
-		logger.Printf("警告：无法加载现有状态文件，本次操作将覆盖或忽略状态：%v", err)
+		logger.Printf(i18n.T.Tr("manifest_error"), err)
 		existingManifest = make(map[string]bool)
 	}
 
@@ -85,13 +90,13 @@ func saveManifest(targetDir string, processedRepos []GitHubRepo) error {
 	// 3. 写入新状态
 	data, err := json.MarshalIndent(existingManifest, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化状态文件失败: %w", err)
+		return fmt.Errorf(i18n.T.Tr("serialize_error"), err)
 	}
 
 	if err := ioutil.WriteFile(manifestPath, data, 0644); err != nil {
-		return fmt.Errorf("写入状态文件失败: %w", err)
+		return fmt.Errorf(i18n.T.Tr("write_manifest_error"), err)
 	}
-	logger.Printf("✅ 状态文件已更新：已记录 %d 个已处理的仓库。", len(existingManifest))
+	logger.Printf(i18n.T.Tr("save_manifest_success"), len(existingManifest))
 	return nil
 }
 
@@ -118,14 +123,14 @@ func main() {
 
 	// 1. 创建目标路径
 	if err := os.MkdirAll(targetPath, 0755); err != nil {
-		fmt.Printf("创建目录失败: %v", err)
+		fmt.Printf(i18n.T.Tr("create_dir_failed"), err)
 		return
 	}
 
 	// 2. 加载状态，实现断点续传
 	processedManifest, err := loadManifest(targetPath)
 	if err != nil {
-		logger.Fatalf("致命错误：无法加载或解析状态文件，请检查日志。错误: %v", err)
+		logger.Fatalf(i18n.T.Tr("load_manifest_fatal"), err)
 	}
 
 	// 循环重试直到所有仓库拉取成功
@@ -133,13 +138,13 @@ func main() {
 		// 2. 获取用户公开仓库列表
 		repos, err := listPublicRepos(username)
 		if err != nil {
-			logger.Printf("获取仓库列表失败: %v，20秒后重试", err)
+			logger.Printf(i18n.T.Tr("fetch_repo_failed"), err)
 			time.Sleep(20 * time.Second)
 			continue
 		}
 
 		if len(repos) == 0 {
-			logger.Printf("未找到该用户的公开仓库")
+			logger.Printf(i18n.T.Tr("no_public_repos"))
 			return
 		}
 
@@ -154,7 +159,7 @@ func main() {
 		}
 
 		if len(reposToProcess) == 0 {
-			logger.Printf("所有 %d 个仓库均已在状态文件中标记为已处理，任务完成。", len(allRepos))
+			logger.Printf(i18n.T.Tr("all_repos_processed"), len(allRepos))
 			break
 		}
 
@@ -166,14 +171,14 @@ func main() {
 		if len(validFailed) == 0 {
 			// 成功：更新状态文件，标记本次处理的仓库
 			if err := saveManifest(targetPath, reposToProcess); err != nil {
-				logger.Fatalf("无法保存状态文件，请检查权限。错误: %v", err)
+				logger.Fatalf(i18n.T.Tr("write_manifest_error"), err)
 			}
-			logger.Printf("所有待处理仓库已成功拉取/更新完成。")
+			logger.Printf(i18n.T.Tr("all_repos_done"))
 			break
 		}
 
 		// 5. 存在失败项，重试
-		logger.Printf("以下仓库拉取失败: %v，10秒后重试", strings.Join(validFailed, ","))
+		logger.Printf(i18n.T.Tr("failed_repos"), strings.Join(validFailed, ","))
 		time.Sleep(10 * time.Second)
 	}
 }
@@ -188,7 +193,7 @@ func initLogger() {
 	// 打开日志文件（追加模式，不存在则创建）
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatalf("创建日志文件失败: %v", err)
+		log.Fatalf(i18n.T.Tr("create_log_failed"), err)
 	}
 
 	// 初始化日志实例（同时输出到控制台和文件）
@@ -199,13 +204,13 @@ func initLogger() {
 // 获取用户公开仓库列表（通过GitHub Open API），包含速率限制重试逻辑
 func listPublicRepos(user string) ([]GitHubRepo, error) {
 	apiURL := fmt.Sprintf("https://api.github.com/users/%s/repos", user)
-	logger.Printf("正在获取仓库列表: %s", apiURL)
+	logger.Printf(i18n.T.Tr("fetch_repo_list"), apiURL)
 
 	const maxRetries = 5
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		resp, err := http.Get(apiURL)
 		if err != nil {
-			return nil, fmt.Errorf("HTTP请求失败: %v", err)
+			return nil, fmt.Errorf(i18n.T.Tr("http_request_failed"), err)
 		}
 		defer resp.Body.Close()
 
@@ -214,16 +219,16 @@ func listPublicRepos(user string) ([]GitHubRepo, error) {
 			// 成功，解析并返回
 			var repos []GitHubRepo
 			if decodeErr := json.NewDecoder(resp.Body).Decode(&repos); decodeErr != nil {
-				return nil, fmt.Errorf("解析JSON失败: %v", decodeErr)
+				return nil, fmt.Errorf(i18n.T.Tr("json_decode_failed"), decodeErr)
 			}
-			logger.Printf("成功获取 %d 个公开仓库", len(repos))
+			logger.Printf(i18n.T.Tr("fetch_repo_success"), len(repos))
 			return repos, nil
 		}
 
 		// 检查速率限制错误 (403 Forbidden 或 429 Too Many Requests)
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 			body, _ := ioutil.ReadAll(resp.Body)
-			logger.Printf("API返回错误状态码: %d. 响应内容: %s", resp.StatusCode, string(body))
+			logger.Printf(i18n.T.Tr("api_error"), resp.StatusCode, string(body))
 
 			// 尝试从响应头获取重试时间
 			resetTimeStr := resp.Header.Get("X-RateLimit-Reset")
@@ -233,7 +238,7 @@ func listPublicRepos(user string) ([]GitHubRepo, error) {
 				if err == nil {
 					waitTime := time.Until(resetTime)
 					if waitTime > 0 {
-						logger.Printf("速率限制触发。请等待 %v 后重试...", waitTime)
+						logger.Printf(i18n.T.Tr("rate_limit_wait"), waitTime)
 						time.Sleep(waitTime + 5*time.Second) // 额外等待5秒确保冷却
 						continue                             // 继续下一次循环尝试
 					}
@@ -241,17 +246,17 @@ func listPublicRepos(user string) ([]GitHubRepo, error) {
 			}
 			// 如果无法从头获取时间，则等待一个默认时间
 			waitTime := time.Duration(attempt+1) * 10 * time.Second
-			logger.Printf("速率限制触发，等待 %v 后重试...", waitTime)
+			logger.Printf(i18n.T.Tr("rate_limit_retry"), waitTime)
 			time.Sleep(waitTime)
 			continue
 		}
 
 		// 其他非成功状态码，直接返回错误
 		body, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API返回错误状态码: %d，响应内容: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf(i18n.T.Tr("api_status_error"), resp.StatusCode, string(body))
 	}
 
-	return nil, fmt.Errorf("达到最大重试次数 (%d) 仍无法获取仓库列表", maxRetries)
+	return nil, fmt.Errorf(i18n.T.Tr("max_retries_exceeded"), maxRetries)
 }
 
 // 拉取或克隆仓库（并发执行）
@@ -270,28 +275,28 @@ func pullOrCloneRepos(repos []GitHubRepo) []string {
 			// 检查仓库是否已存在
 			exists, err := pathExists(repoPath)
 			if err != nil {
-				logger.Printf("检查仓库 %s 路径失败: %v", repo.Name, err)
+				logger.Printf(i18n.T.Tr("check_path_failed"), repo.Name, err)
 				failedChan <- repo.Name
 				return
 			}
 
 			if exists {
-				logger.Printf("--- 正在处理仓库: %s (Fetching) ---", repo.Name)
+				logger.Printf(i18n.T.Tr("repo_fetching"), repo.Name)
 				// 已存在，执行git fetch
 				if err := gitFetch(repoPath); err != nil {
-					logger.Printf("仓库 %s fetch失败: %v", repo.Name, err)
+					logger.Printf(i18n.T.Tr("repo_fetch_failed"), repo.Name, err)
 					failedChan <- repo.Name
 				} else {
-					logger.Printf("仓库 %s fetch成功", repo.Name)
+					logger.Printf(i18n.T.Tr("repo_fetch_success"), repo.Name)
 				}
 			} else {
-				logger.Printf("--- 正在处理仓库: %s (Cloning) ---", repo.Name)
+				logger.Printf(i18n.T.Tr("repo_cloning"), repo.Name)
 				// 不存在，执行git clone
 				if err := gitClone(repo.CloneURL, repoPath); err != nil {
-					logger.Printf("仓库 %s clone失败: %v", repo.Name, err)
+					logger.Printf(i18n.T.Tr("repo_clone_failed"), repo.Name, err)
 					failedChan <- repo.Name
 				} else {
-					logger.Printf("仓库 %s clone成功", repo.Name)
+					logger.Printf(i18n.T.Tr("repo_clone_success"), repo.Name)
 				}
 			}
 		}(repo)

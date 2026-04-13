@@ -1,73 +1,85 @@
+# 🚀 GitHub Repository Bulk Download Tool (github-user-dl)
 
-# 🚀 GitHub 仓库批量下载工具 (github-user-dl)
+This project is a command-line tool written in Go for automatically downloading all public repositories from a specified GitHub user to a local directory.
 
-本项目是一个使用 Go 语言开发的命令行工具，用于自动化地从 GitHub 下载指定用户（User）下的所有公开仓库到本地指定目录。
+## ✨ Key Features & Optimizations
 
-## ✨ 主要特性与优化点
+This optimized version significantly enhances robustness and performance:
 
-本次优化版本极大地增强了工具的健壮性和性能：
+1.  **🚀 Performance Boost (Concurrency):** Repository pull/clone operations are now **concurrently executed**, greatly speeding up processing of large numbers of repositories.
+2.  **🛡️ Robustness Enhancement (API Rate Limit Handling):** Automatically detects GitHub API rate limit errors (403/429). When limits are triggered, the program reads the reset time from response headers and performs exponential backoff retries until success or max retries reached.
+3.  **✅ Process Optimization:** Implements a complete retry loop until all repositories are successfully pulled or max retries reached.
+4.  **🧹 Code Quality:** Optimized internal functions like path checking and logging to follow Go best practices.
 
-1.  **🚀 性能提升 (并发化)：** 仓库的拉取/克隆操作现在是**并发执行**的，极大地加快了处理大量仓库的速度。
-2.  **🛡️ 健壮性增强 (API 速率限制处理)：** 自动检测 GitHub API 的速率限制错误（403/429）。当触发限制时，程序会自动读取响应头中的重置时间，并进行指数退避（Exponential Backoff）重试，直到成功或达到最大重试次数。
-3.  **✅ 流程优化：** 实现了完整的重试循环，直到所有仓库都成功拉取或达到最大重试次数。
-4.  **🧹 代码质量：** 优化了内部函数，如路径检查和日志记录，使其更符合 Go 语言的最佳实践。
+## ⚙️ Usage
 
-## ⚙️ 使用方法
+### 1. Install Dependencies
 
-### 1. 安装依赖
+Ensure you have Go environment installed and the `git` command-line tool available.
 
-请确保您的系统已安装 Go 环境，并且已安装 `git` 命令行工具。
+### 2. Run the Program
 
-### 2. 运行程序
+Two ways to run:
 
-程序有两种运行方式：
-
-**A. 开发/调试模式 (推荐)**
-使用 `go run` 直接编译和运行，方便快速迭代：
+**A. Development/Debug Mode (Recommended)**
+Use `go run` for quick iteration:
 ```bash
-# 语法: go run main.go -u <用户名> [-p <目标路径>]
+# Syntax: go run main.go -u <username> [-p <target_path>]
 
-# 示例 1: 下载 'openclaw' 用户的所有仓库到默认目录 (./openclaw)
+# Example 1: Download all repos from 'openclaw' to default directory (./openclaw)
 go run main.go -u openclaw
 
-# 示例 2: 下载 'octocat' 用户的所有仓库到自定义目录
+# Example 2: Download all repos from 'octocat' to custom directory
 go run main.go -u octocat -p ./my_github_repos
 ```
 
-**B. 生产/部署模式 (推荐)**
-先编译成可执行二进制文件，然后运行该文件，性能更稳定：
+**B. Production/Deployment Mode (Recommended)**
+Compile to binary first, then run:
 ```bash
-# 1. 编译程序
+# 1. Compile
 go build -o gh-user-dl ./main.go
 
-# 2. 运行编译后的二进制文件
-./gh-user-dl -u <用户名> [-p <目标路径>]
+# 2. Run the binary
+./gh-user-dl -u <username> [-p <target_path>]
 ```
 
-### 3. 参数说明
+### 3. Parameters
 
-*   `-u <用户名>`: **(必填)** 要下载仓库的 GitHub 用户名。
-*   `-p <目标路径>`: **(可选)** 指定所有仓库的本地保存根目录。如果未提供，默认路径为 `./<用户名>`。
+*   `-u <username>`: **(Required)** GitHub username to download repositories from.
+*   `-p <target_path>`: **(Optional)** Local root directory for all repositories. Default: `./<username>`.
 
-## 🔄 工作流程详解
+## 🔄 Workflow
 
-1.  **初始化：** 程序首先创建目标根目录（如 `./openclaw`）。
-2.  **获取列表：** 调用 GitHub API 获取用户所有公开仓库的列表。此步骤会包含速率限制重试机制。
-3.  **并发处理：** 遍历所有仓库，使用 Goroutines 并发执行以下操作：
-    *   **检查：** 检查本地是否已存在该仓库目录。
-    *   **Fetch (已存在)：** 如果存在，执行 `git fetch` 更新代码。
-    *   **Clone (不存在)：** 如果不存在，执行 `git clone` 下载代码。
-4.  **校验与重试：** 收集所有失败的仓库，并在等待一段时间后，重复步骤 2-3，直到所有仓库都成功同步。
+1.  **Initialize:** Program creates the target root directory (e.g., `./openclaw`).
+2.  **Fetch List:** Calls GitHub API to get all public repositories. Includes rate limit retry mechanism.
+3.  **Concurrent Processing:** Iterates through all repositories using Goroutines:
+    *   **Check:** Checks if local directory already exists.
+    *   **Fetch (Exists):** If exists, runs `git fetch` to update.
+    *   **Clone (Not Exists):** If not exists, runs `git clone` to download.
+4.  **Validation & Retry:** Collects failed repositories, waits, then repeats steps 2-3 until all synced.
 
-## ⚠️ 速率限制与认证
+## ⚠️ Rate Limits & Authentication
 
-*   **未认证用户：** 默认使用未认证的 API 访问，受限于每小时 60 次请求。
-*   **推荐做法：** 为了提高成功率和调用额度，强烈建议您在运行前设置 **GitHub Personal Access Token (PAT)** 环境变量，例如：
+*   **Unauthenticated Users:** Limited to 60 requests/hour.
+*   **Recommended:** Set **GitHub Personal Access Token (PAT)** environment variable for higher limits:
     ```bash
     export GITHUB_TOKEN="YOUR_PAT_HERE"
-    # 并在 main.go 中读取此 Token 并添加到 HTTP 请求的 Header 中
+    # Then modify main.go to read this token and add to HTTP request headers
     ```
 
-## 📄 日志记录
+## 📄 Logging
 
-所有详细的执行过程、成功/失败的仓库名称、API 错误和重试信息都会被记录到目标目录下的 `github-dl.log` 文件中，方便您进行审计和排查问题。
+All execution details, success/failure logs, API errors, and retry info are recorded in `github-dl.log` under the target directory.
+
+## 🌍 Internationalization
+
+This tool supports **English** and **Chinese** languages. The default language follows your system settings:
+
+- **English:** When system language is English (e.g., `LANG=en_US.UTF-8`)
+- **Chinese:** When system language is Chinese (e.g., `LANG=zh_CN.UTF-8`)
+
+You can also force a specific language:
+```bash
+LANG=en_US.UTF-8 ./gh-user-dl -u username  # English
+LANG=zh_CN.UTF-8 ./gh-user-dl -u username  # Chinese
+```
