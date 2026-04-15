@@ -48,6 +48,12 @@ jobs:
       #         provenance for.
       #
       # ========================================================
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-user-dl
+          path: github-user-dl
+
       - name: Generate subject for provenance
         id: hash
         run: |
