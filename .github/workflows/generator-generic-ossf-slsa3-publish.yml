@@ -52,9 +52,7 @@ jobs:
         id: hash
         run: |
           set -euo pipefail
-          HASH=$(sha256sum github-user-dl | awk '{print $1}')
-          echo "hashes=$(echo "$HASH" | base64 -w0)" >> "$GITHUB_OUTPUT"
-          cat "$GITHUB_OUTPUT"
+          echo "hashes=$(sha256sum github-user-dl | base64 -w0)" >> "$GITHUB_OUTPUT"
 
   provenance:
     needs: [build]
